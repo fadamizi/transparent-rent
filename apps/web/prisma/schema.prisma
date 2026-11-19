@@ -1,0 +1,140 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum ListingStatus {
+  DRAFT
+  PUBLISHED
+  RENTED
+  ARCHIVED
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+model User {
+  id            String                 @id @db.Uuid // Supabase Auth UUID
+  displayName   String?
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+  rentRecords   RentRecord[]
+  verifications LandlordVerification[]
+  listings      Listing[]
+  serviceOrders ServiceOrder[]
+}
+
+model Community {
+  id          String       @id @default(uuid()) @db.Uuid
+  name        String
+  province    String
+  city        String
+  district    String
+  address     String?
+  latitude    Decimal?     @db.Decimal(10, 7)
+  longitude   Decimal?     @db.Decimal(10, 7)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  rentRecords RentRecord[]
+  listings    Listing[]
+
+  @@unique([province, city, district, name])
+  @@index([city, district])
+}
+
+model RentRecord {
+  id                  String             @id @default(uuid()) @db.Uuid
+  userId              String             @db.Uuid
+  communityId         String             @db.Uuid
+  monthlyRent         Int // CNY yuan
+  areaSqm             Decimal            @db.Decimal(8, 2)
+  bedrooms            Int
+  leaseStartedAt      DateTime           @db.Date
+  evidenceSha256      String             @unique @db.Char(64) // Hash of redacted evidence
+  redactedEvidenceKey String // Private bucket key
+  verificationStatus  VerificationStatus @default(PENDING)
+  deviationPercent    Decimal?           @db.Decimal(8, 1)
+  reviewedAt          DateTime?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  user                User               @relation(fields: [userId], references: [id], onDelete: Restrict)
+  community           Community          @relation(fields: [communityId], references: [id], onDelete: Restrict)
+
+  @@index([communityId, verificationStatus, leaseStartedAt])
+  @@index([userId])
+}
+
+model LandlordVerification {
+  id                  String             @id @default(uuid()) @db.Uuid
+  userId              String             @db.Uuid
+  deedSha256          String             @unique @db.Char(64)
+  verificationStatus  VerificationStatus @default(PENDING)
+  originalDestroyedAt DateTime?
+  verifiedAt          DateTime?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  user                User               @relation(fields: [userId], references: [id], onDelete: Restrict)
+  listings            Listing[]
+
+  @@unique([id, userId])
+  @@index([userId, verificationStatus])
+}
+
+model Listing {
+  id                     String               @id @default(uuid()) @db.Uuid
+  landlordId             String               @db.Uuid
+  communityId            String               @db.Uuid
+  landlordVerificationId String               @db.Uuid
+  title                  String
+  monthlyRent            Int
+  areaSqm                Decimal              @db.Decimal(8, 2)
+  bedrooms               Int
+  status                 ListingStatus        @default(DRAFT)
+  publishedAt            DateTime?
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+  landlord               User                 @relation(fields: [landlordId], references: [id], onDelete: Restrict)
+  community              Community            @relation(fields: [communityId], references: [id], onDelete: Restrict)
+  landlordVerification   LandlordVerification @relation(fields: [landlordVerificationId, landlordId], references: [id, userId], onDelete: Restrict)
+  serviceOrders          ServiceOrder[]
+
+  @@index([communityId, status])
+  @@index([landlordVerificationId, landlordId])
+}
+
+model ServiceOrder {
+  id                    String      @id @default(uuid()) @db.Uuid
+  userId                String      @db.Uuid
+  listingId             String      @db.Uuid
+  serviceFeeFen         Int         @default(19900) // CNY 199; SQL CHECK enforces fixed price
+  currency              String      @default("CNY") @db.Char(3)
+  status                OrderStatus @default(PENDING)
+  paymentReference      String?     @unique
+  electronicContractKey String?
+  contractSha256        String?     @db.Char(64)
+  paidAt                DateTime?
+  completedAt           DateTime?
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+  user                  User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+  listing               Listing     @relation(fields: [listingId], references: [id], onDelete: Restrict)
+
+  @@index([userId, status])
+  @@index([listingId])
+}

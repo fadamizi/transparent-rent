@@ -1,0 +1,16 @@
+{
+  "name": "transparent-rent",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @transparent-rent/web",
+    "build": "npm run build --workspace @transparent-rent/web",
+    "db:validate": "npm run db:validate --workspace @transparent-rent/web"
+  },
+  "overrides": {
+    "postcss": "^8.5.23",
+    "deepmerge-ts": "^8.0.0"
+  }
+}
